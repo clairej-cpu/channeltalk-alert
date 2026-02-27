@@ -29,8 +29,10 @@ redis = Redis.from_env()
 
 
 def is_operation_hours() -> bool:
-    now = datetime.now(TZ).time()
-    return OPERATION_START <= now <= OPERATION_END
+    now_dt = datetime.now(TZ)
+    if now_dt.weekday() >= 5:  # 5=토요일, 6=일요일
+        return False
+    return OPERATION_START <= now_dt.time() <= OPERATION_END
 
 
 async def send_slack(message: str):
