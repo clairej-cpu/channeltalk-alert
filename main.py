@@ -11,12 +11,18 @@ from upstash_redis import Redis
 app = FastAPI()
 
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL", "")
-MY_MEMBER_ID = os.getenv("MY_CHANNEL_MEMBER_ID", "")
 OPERATION_START = time(*map(int, os.getenv("OPERATION_START", "09:00").split(":")))
 OPERATION_END = time(*map(int, os.getenv("OPERATION_END", "18:00").split(":")))
 TZ = ZoneInfo(os.getenv("OPERATION_TIMEZONE", "Asia/Seoul"))
 BASE_URL = os.getenv("BASE_URL", "")
 QSTASH_TOKEN = os.getenv("QSTASH_TOKEN", "")
+
+# 채널톡 멤버ID → 이름 매핑
+MEMBER_NAME_MAP = {
+    "491085": "고구망",
+    "535653": "인절미",
+    "598956": "나나",
+}
 
 qstash = QStash(token=QSTASH_TOKEN)
 redis = Redis.from_env()
@@ -95,18 +101,22 @@ async def handle_customer_message(payload: dict):
             "chat_title": chat_title,
             "customer_name": customer_name,
             "msg_preview": msg_preview,
+            "assignee_name": "미배정",
         }
         schedule_timer(chat_id, delay_seconds=5 * 60, alert_payload=alert_payload)
 
-    elif assignee.get("id") == MY_MEMBER_ID:
+    else:
+        assignee_id = str(assignee.get("id", ""))
+        assignee_name = MEMBER_NAME_MAP.get(assignee_id, "알 수 없음")
         alert_payload = {
-            "type": "my_chat",
+            "type": "assigned",
             "chat_id": chat_id,
             "chat_title": chat_title,
             "customer_name": customer_name,
             "msg_preview": msg_preview,
+            "assignee_name": assignee_name,
         }
-        schedule_timer(chat_id, delay_seconds=3 * 60, alert_payload=alert_payload)
+        schedule_timer(chat_id, delay_seconds=5 * 60, alert_payload=alert_payload)
 
 
 @app.post("/alert")
@@ -128,6 +138,7 @@ async def receive_alert(request: Request):
     chat_title = data.get("chat_title", "알 수 없음")
     customer_name = data.get("customer_name", "고객")
     msg_preview = data.get("msg_preview", "")
+    assignee_name = data.get("assignee_name", "")
 
     if alert_type == "unassigned":
         msg = (
@@ -137,13 +148,14 @@ async def receive_alert(request: Request):
             f"> 마지막 메시지: {msg_preview}\n"
             f"> ⏰ 5분째 미응답 중입니다!"
         )
-    elif alert_type == "my_chat":
+    elif alert_type == "assigned":
         msg = (
-            f"🟡 *내 문의 미응답 알림*\n"
+            f"🟡 *문의 미응답 알림*\n"
+            f"> 담당자: {assignee_name}\n"
             f"> 채팅방: {chat_title}\n"
             f"> 고객: {customer_name}\n"
             f"> 마지막 메시지: {msg_preview}\n"
-            f"> ⏰ 3분째 미응답 중입니다!"
+            f"> ⏰ 5분째 미응답 중입니다!"
         )
     else:
         return {"ok": True}
