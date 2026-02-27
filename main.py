@@ -63,7 +63,15 @@ def schedule_timer(chat_id: str, delay_seconds: int, alert_payload: dict):
 @app.post("/webhook/channel")
 async def channel_webhook(request: Request):
     payload = await request.json()
-    event_type = payload.get("event", {}).get("type", "")
+    print("=== PAYLOAD ===", payload)  # 구조 확인용
+    
+    event = payload.get("event", {})
+    if isinstance(event, str):
+        event_type = event
+    else:
+        event_type = event.get("type", "")
+    
+    print("=== EVENT TYPE ===", event_type)  # 이벤트명 확인용
 
     if event_type == "chat_message_created":
         sender_type = payload.get("entity", {}).get("personType", "")
