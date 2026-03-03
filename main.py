@@ -104,7 +104,8 @@ async def handle_customer_message(payload: dict):
     chat_info = payload.get("chat", {})
     assignee_id = str(chat_info.get("assigneeId", "") or "")
 
-    print(f"=== CHAT_ID: {chat_id}, ASSIGNEE_ID: {assignee_id} ===")
+  print(f"=== CHAT_ID: {chat_id}, ASSIGNEE_ID: {assignee_id} ===")
+print(f"=== CHAT_INFO: {chat_info} ===")
 
     if not assignee_id:
         # 담당자 없음 → 5분
