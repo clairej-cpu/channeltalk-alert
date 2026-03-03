@@ -30,7 +30,7 @@ redis = Redis.from_env()
 
 def is_operation_hours() -> bool:
     now_dt = datetime.now(TZ)
-    if now_dt.weekday() >= 5:  # 5=토요일, 6=일요일
+    if now_dt.weekday() >= 5:
         return False
     return OPERATION_START <= now_dt.time() <= OPERATION_END
 
@@ -63,29 +63,26 @@ def schedule_timer(chat_id: str, delay_seconds: int, alert_payload: dict):
 @app.post("/webhook/channel")
 async def channel_webhook(request: Request):
     payload = await request.json()
-    print("=== PAYLOAD ===", payload)  # 구조 확인용
-    
-    event = payload.get("event", {})
-    if isinstance(event, str):
-        event_type = event
-    else:
-        event_type = event.get("type", "")
-    
-    print("=== EVENT TYPE ===", event_type)  # 이벤트명 확인용
 
-    if event_type == "chat_message_created":
-        sender_type = payload.get("entity", {}).get("personType", "")
-        if sender_type == "user":
+    event = payload.get("event", "")
+    msg_type = payload.get("type", "")
+
+    print(f"=== EVENT: {event}, TYPE: {msg_type} ===")
+
+    # 고객 메시지인 경우
+    if event == "push" and msg_type == "message":
+        user = payload.get("user", {})
+        is_member = user.get("member", False)
+
+        if not is_member:
+            # 고객 발화
             await handle_customer_message(payload)
-        elif sender_type == "member":
-            chat_id = payload.get("chat", {}).get("id", "")
+        else:
+            # 상담사 발화 → 타이머 취소
+            chat = payload.get("entity", {})
+            chat_id = str(chat.get("chatId", "") or chat.get("id", ""))
             if chat_id:
                 cancel_existing_timer(chat_id)
-
-    elif event_type == "chat_assigned":
-        chat_id = payload.get("chat", {}).get("id", "")
-        if chat_id:
-            cancel_existing_timer(chat_id)
 
     return {"ok": True}
 
@@ -94,17 +91,23 @@ async def handle_customer_message(payload: dict):
     if not is_operation_hours():
         return
 
-    chat = payload.get("chat", {})
-    message = payload.get("entity", {})
+    entity = payload.get("entity", {})
+    chat_id = str(entity.get("chatId", "") or entity.get("id", ""))
+    chat_title = entity.get("name") or chat_id
+    
+    user = payload.get("user", {})
+    customer_name = user.get("name", "고객")
+    
+    msg_preview = (entity.get("plainText", "") or "")[:50]
 
-    chat_id = chat.get("id", "unknown")
-    chat_title = chat.get("name") or chat_id
-    customer_name = payload.get("user", {}).get("name", "고객")
-    msg_preview = (message.get("plainText", "") or "")[:50]
+    # 담당자 확인
+    chat_info = payload.get("chat", {})
+    assignee_id = str(chat_info.get("assigneeId", "") or "")
 
-    assignee = chat.get("assignee")
+    print(f"=== CHAT_ID: {chat_id}, ASSIGNEE_ID: {assignee_id} ===")
 
-    if assignee is None:
+    if not assignee_id:
+        # 담당자 없음 → 5분
         alert_payload = {
             "type": "unassigned",
             "chat_id": chat_id,
@@ -114,10 +117,9 @@ async def handle_customer_message(payload: dict):
             "assignee_name": "미배정",
         }
         schedule_timer(chat_id, delay_seconds=5 * 60, alert_payload=alert_payload)
-
     else:
-        assignee_id = str(assignee.get("id", ""))
-        assignee_name = MEMBER_NAME_MAP.get(assignee_id, "알 수 없음")
+        # 담당자 있음 → 5분
+        assignee_name = MEMBER_NAME_MAP.get(assignee_id, assignee_id)
         alert_payload = {
             "type": "assigned",
             "chat_id": chat_id,
