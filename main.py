@@ -17,7 +17,6 @@ TZ = ZoneInfo(os.getenv("OPERATION_TIMEZONE", "Asia/Seoul"))
 BASE_URL = os.getenv("BASE_URL", "")
 QSTASH_TOKEN = os.getenv("QSTASH_TOKEN", "")
 
-# 채널톡 멤버ID → 이름 매핑
 MEMBER_NAME_MAP = {
     "491085": "고구망",
     "535653": "인절미",
@@ -69,18 +68,15 @@ async def channel_webhook(request: Request):
 
     print(f"=== EVENT: {event}, TYPE: {msg_type} ===")
 
-    # 고객 메시지인 경우
     if event == "push" and msg_type == "message":
         user = payload.get("user", {})
         is_member = user.get("member", False)
 
         if not is_member:
-            # 고객 발화
             await handle_customer_message(payload)
         else:
-            # 상담사 발화 → 타이머 취소
-            chat = payload.get("entity", {})
-            chat_id = str(chat.get("chatId", "") or chat.get("id", ""))
+            entity = payload.get("entity", {})
+            chat_id = str(entity.get("chatId", "") or entity.get("id", ""))
             if chat_id:
                 cancel_existing_timer(chat_id)
 
@@ -94,21 +90,19 @@ async def handle_customer_message(payload: dict):
     entity = payload.get("entity", {})
     chat_id = str(entity.get("chatId", "") or entity.get("id", ""))
     chat_title = entity.get("name") or chat_id
-    
+
     user = payload.get("user", {})
     customer_name = user.get("name", "고객")
-    
+
     msg_preview = (entity.get("plainText", "") or "")[:50]
 
-    # 담당자 확인
     chat_info = payload.get("chat", {})
-    assignee_id = str(chat_info.get("assigneeId", "") or "")
+    print(f"=== CHAT_INFO: {chat_info} ===")
 
-  print(f"=== CHAT_ID: {chat_id}, ASSIGNEE_ID: {assignee_id} ===")
-print(f"=== CHAT_INFO: {chat_info} ===")
+    assignee_id = str(chat_info.get("assigneeId", "") or "")
+    print(f"=== CHAT_ID: {chat_id}, ASSIGNEE_ID: {assignee_id} ===")
 
     if not assignee_id:
-        # 담당자 없음 → 5분
         alert_payload = {
             "type": "unassigned",
             "chat_id": chat_id,
@@ -119,7 +113,6 @@ print(f"=== CHAT_INFO: {chat_info} ===")
         }
         schedule_timer(chat_id, delay_seconds=5 * 60, alert_payload=alert_payload)
     else:
-        # 담당자 있음 → 5분
         assignee_name = MEMBER_NAME_MAP.get(assignee_id, assignee_id)
         alert_payload = {
             "type": "assigned",
